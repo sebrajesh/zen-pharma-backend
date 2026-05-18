@@ -2,10 +2,10 @@
 
 Spring Boot microservices monorepo for the Zen Pharma platform. Contains 7 backend services built with Java 17 and deployed to AWS EKS via GitOps (ArgoCD).
 
-> **Companion repos:**
-> - [`zen-infra`](https://github.com/your-github-username/zen-infra) — Terraform for AWS infrastructure (EKS, RDS, ECR, IAM)
-> - [`zen-pharma-frontend`](https://github.com/your-github-username/zen-pharma-frontend) — React frontend
-> - [`zen-gitops`](https://github.com/your-github-username/zen-gitops) — ArgoCD apps + Helm values
+> **Companion repos** (replace `YOUR_GITHUB_USERNAME` with your GitHub username):
+> - `https://github.com/YOUR_GITHUB_USERNAME/zen-infra` — Terraform for AWS infrastructure (EKS, RDS, ECR, IAM)
+> - `https://github.com/YOUR_GITHUB_USERNAME/zen-pharma-frontend` — React frontend
+> - `https://github.com/YOUR_GITHUB_USERNAME/zen-gitops` — ArgoCD apps + Helm values
 
 ---
 
@@ -144,27 +144,36 @@ docker run -p 8081:8081 auth-service:local
 
 ---
 
+## Forking this repo
+
+See **[`implementation.md`](./implementation.md)** for the complete fork setup guide covering AWS OIDC, IAM role, ECR repos, GitHub secrets, ArgoCD, and GitOps layout.
+
+Quick checklist:
+1. Update the IAM role trust policy — replace the `sub` condition with `repo:YOUR_GITHUB_USERNAME/zen-pharma-backend:*` (missing org name is the most common failure)
+2. If you use a different IAM role name than `pharma-dev-github-actions-role`, update `role-to-assume` in `.github/workflows/_java-build.yml` and `_node-build.yml`
+3. Set the GitHub secrets and variable below
+4. Create the 8 ECR repositories in your AWS account
+5. Set `GITOPS_REPO` to point at your own gitops repo
+
+---
+
 ## Required GitHub Secrets
 
 Set in **Settings → Secrets and variables → Actions**:
 
 | Secret | Description |
 |---|---|
-| `AWS_ACCOUNT_ID` | 12-digit AWS account ID |
-| `GITOPS_TOKEN` | GitHub PAT with `contents: write` on `your-github-username/zen-gitops` |
+| `AWS_ACCOUNT_ID` | Your 12-digit AWS account ID |
+| `GITOPS_TOKEN` | GitHub PAT with `contents: write` on `YOUR_GITHUB_USERNAME/zen-gitops` |
 | `SEMGREP_APP_TOKEN` | Semgrep Cloud token (optional) |
 | `NVD_API_KEY` | NIST NVD API key for OWASP Dep Check (optional, faster) |
 
 | Variable | Value |
 |---|---|
-| `GITOPS_REPO` | `your-github-username/zen-gitops` |
+| `GITOPS_REPO` | `YOUR_GITHUB_USERNAME/zen-gitops` |
 
 ---
 
 ## Full Deployment Guide
 
-See [`zen-infra/docs/FULL-DEPLOYMENT-GUIDE.md`](https://github.com/your-github-username/zen-infra/blob/main/docs/FULL-DEPLOYMENT-GUIDE.md) for the complete 4-stage deployment:
-1. Provision infrastructure (Terraform via GitHub Actions in zen-infra)
-2. Install K8s prerequisites (scripts in zen-infra)
-3. CI pipeline (this repo — auto-triggered on push to develop)
-4. ArgoCD CD (zen-gitops — ArgoCD watches this after step 2 setup)
+See [`implementation.md`](./implementation.md) for the complete setup guide including OIDC, IAM, ECR, ArgoCD, and GitOps configuration.

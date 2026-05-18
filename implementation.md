@@ -12,7 +12,7 @@ This guide is for teams who **fork** (or copy) `zen-pharma-backend` and want Git
 
 **Placeholders to replace**
 
-- `YOUR_ORG` — GitHub org or user owning the fork  
+- `YOUR_GITHUB_USERNAME` — your GitHub username (or org name if you're using one)
 - `YOUR_AWS_ACCOUNT_ID` — 12-digit AWS account ID  
 - `YOUR_REGION` — e.g. `us-east-1` (workflows default to `us-east-1`)
 
@@ -20,45 +20,47 @@ This guide is for teams who **fork** (or copy) `zen-pharma-backend` and want Git
 
 ## Phase 0 — Decisions and forks
 
-1. Fork **`zen-pharma-backend`** to `YOUR_ORG/zen-pharma-backend`.
+1. Fork **`zen-pharma-backend`** to `YOUR_GITHUB_USERNAME/zen-pharma-backend`.
 2. Create a GitOps repo you control:
-   - Fork upstream **`zen-gitops`** if available, **or** create `YOUR_ORG/zen-gitops` and copy the expected layout from [`CI-ARCHITECTURE.md`](./CI-ARCHITECTURE.md) (see Phase 5).
+   - Fork upstream **`zen-gitops`** if available, **or** create `YOUR_GITHUB_USERNAME/zen-gitops` and copy the expected layout from [`CI-ARCHITECTURE.md`](./CI-ARCHITECTURE.md) (see Phase 5).
 3. Clone **`zen-infra`** locally and read its README: note variables for cluster name, ECR, GitHub OIDC, ArgoCD, and any IRSA roles.
 
 ---
 
 ## Phase 1 — Align workflow configuration with your GitHub slugs
 
-Upstream workflows set `GITOPS_REPO` to **`chandika-s/zen-gitops`**. After a fork, update **every** `ci-*.yml` and `promote-prod.yml` under `.github/workflows/` so that:
+Upstream workflows set `GITOPS_REPO` to **`YOUR_GITHUB_USERNAME/zen-gitops`**. After a fork, update **every** `ci-*.yml` and `promote-prod.yml` under `.github/workflows/` so that:
 
 ```yaml
 env:
-  GITOPS_REPO: YOUR_ORG/zen-gitops
+  GITOPS_REPO: YOUR_GITHUB_USERNAME/zen-gitops
 ```
 
-Also update any hard-coded notices in shell steps that still reference `chandika-s/zen-gitops` (search the workflows directory).
+Also update any hard-coded notices in shell steps that still reference `YOUR_GITHUB_USERNAME/zen-gitops` (search the workflows directory).
 
 **Optional:** define a repository **variable** `GITOPS_REPO` in **Settings → Secrets and variables → Actions → Variables** and reference it from workflows to avoid scattering org names (requires small workflow edits).
 
 ### IAM OIDC trust (AWS)
 
-The trust policy example in [`CI-ARCHITECTURE.md`](./CI-ARCHITECTURE.md) restricts `sub` to:
+The trust policy `sub` condition must be:
 
-`repo:chandika-s/zen-pharma-backend:*`
+```
+repo:YOUR_GITHUB_USERNAME/zen-pharma-backend:*
+```
 
-Change this to:
+> **Common mistake:** the `sub` value must include your GitHub username/org followed by a `/` before the repo name — e.g. `repo:johndoe/zen-pharma-backend:*`. A missing username (e.g. `repo:/zen-pharma-backend:*`) will cause every `sts:AssumeRoleWithWebIdentity` call to be denied, and the ECR push step will fail with `AccessDenied`.
 
-`repo:YOUR_ORG/zen-pharma-backend:*`
+Update the `Federated` ARN and `sub` condition in your trust policy to use your username and account ID (see [OIDC and IAM role — AWS CLI](#oidc-and-iam-role--aws-cli-pharma-dev-github-actions-role) below).
 
-If you use a different IAM role name than `pharma-github-actions-role`, update **both** zen-infra (or your IaC) and the reusable workflows [`_java-build.yml`](./.github/workflows/_java-build.yml) / [`_node-build.yml`](./.github/workflows/_node-build.yml) (`role-to-assume`).
+If you use a different IAM role name than `pharma-dev-github-actions-role`, update **both** zen-infra (or your IaC) and the reusable workflows [`_java-build.yml`](./.github/workflows/_java-build.yml) / [`_node-build.yml`](./.github/workflows/_node-build.yml) (`role-to-assume`).
 
 ---
 
-## OIDC and IAM role — AWS CLI (`pharma-github-actions-role`)
+## OIDC and IAM role — AWS CLI (`pharma-dev-github-actions-role`)
 
-Use this sequence when provisioning the GitHub Actions → AWS trust by hand (same shape as [`CI-ARCHITECTURE.md`](./CI-ARCHITECTURE.md)). **Role name:** `pharma-github-actions-role`.
+Use this sequence when provisioning the GitHub Actions → AWS trust by hand (same shape as [`CI-ARCHITECTURE.md`](./CI-ARCHITECTURE.md)). **Role name:** `pharma-dev-github-actions-role`.
 
-**Forks:** Replace `020930354342` with your account ID everywhere below, and change `token.actions.githubusercontent.com:sub` to `repo:YOUR_ORG/zen-pharma-backend:*` (and update the `Federated` ARN so the account ID in `arn:aws:iam::<ACCOUNT_ID>:oidc-provider/...` matches).
+**Forks:** Replace `YOUR_AWS_ACCOUNT_ID` with your account ID everywhere below, and change `token.actions.githubusercontent.com:sub` to `repo:YOUR_GITHUB_USERNAME/zen-pharma-backend:*` (and update the `Federated` ARN so the account ID in `arn:aws:iam::<ACCOUNT_ID>:oidc-provider/...` matches).
 
 ### Step 1 — Create the GitHub OIDC identity provider (once per account)
 
@@ -79,7 +81,7 @@ aws iam list-open-id-connect-providers
 
 ### Step 2 — Trust policy (exact)
 
-Save as `trust-policy.json` (values below match production for account `020930354342` and repo `chandika-s/zen-pharma-backend`):
+Save as `trust-policy.json` (values below match production for account `YOUR_AWS_ACCOUNT_ID` and repo `YOUR_GITHUB_USERNAME/zen-pharma-backend`):
 
 ```json
 {
@@ -88,7 +90,7 @@ Save as `trust-policy.json` (values below match production for account `02093035
     {
       "Effect": "Allow",
       "Principal": {
-        "Federated": "arn:aws:iam::020930354342:oidc-provider/token.actions.githubusercontent.com"
+        "Federated": "arn:aws:iam::YOUR_AWS_ACCOUNT_ID:oidc-provider/token.actions.githubusercontent.com"
       },
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
@@ -96,7 +98,7 @@ Save as `trust-policy.json` (values below match production for account `02093035
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
         },
         "StringLike": {
-          "token.actions.githubusercontent.com:sub": "repo:chandika-s/zen-pharma-backend:*"
+          "token.actions.githubusercontent.com:sub": "repo:YOUR_GITHUB_USERNAME/zen-pharma-backend:*"
         }
       }
     }
@@ -108,7 +110,7 @@ Save as `trust-policy.json` (values below match production for account `02093035
 
 ```bash
 aws iam create-role \
-  --role-name pharma-github-actions-role \
+  --role-name pharma-dev-github-actions-role \
   --assume-role-policy-document file://trust-policy.json \
   --description "GitHub Actions OIDC role for zen-pharma-backend CI/CD (ECR push)"
 ```
@@ -142,7 +144,7 @@ Save as `pharma-ecr-policy.json`:
         "ecr:PutImage",
         "ecr:UploadLayerPart"
       ],
-      "Resource": "arn:aws:ecr:us-east-1:020930354342:repository/*"
+      "Resource": "arn:aws:ecr:us-east-1:YOUR_AWS_ACCOUNT_ID:repository/*"
     }
   ]
 }
@@ -152,7 +154,7 @@ Save as `pharma-ecr-policy.json`:
 
 ```bash
 aws iam put-role-policy \
-  --role-name pharma-github-actions-role \
+  --role-name pharma-dev-github-actions-role \
   --policy-name pharma-ecr-access \
   --policy-document file://pharma-ecr-policy.json
 ```
@@ -160,18 +162,18 @@ aws iam put-role-policy \
 ### Step 6 — Verify
 
 ```bash
-aws iam get-role --role-name pharma-github-actions-role --query 'Role.Arn' --output text
+aws iam get-role --role-name pharma-dev-github-actions-role --query 'Role.Arn' --output text
 
 aws iam get-role-policy \
-  --role-name pharma-github-actions-role \
+  --role-name pharma-dev-github-actions-role \
   --policy-name pharma-ecr-access
 ```
 
 GitHub Actions assumes:
 
-`arn:aws:iam::<AWS_ACCOUNT_ID>:role/pharma-github-actions-role`
+`arn:aws:iam::<AWS_ACCOUNT_ID>:role/pharma-dev-github-actions-role`
 
-Set repository secret **`AWS_ACCOUNT_ID`** to `020930354342` (or your account ID) so [`_java-build.yml`](./.github/workflows/_java-build.yml) / [`_node-build.yml`](./.github/workflows/_node-build.yml) can construct that ARN.
+Set repository secret **`AWS_ACCOUNT_ID`** to `YOUR_AWS_ACCOUNT_ID` (or your account ID) so [`_java-build.yml`](./.github/workflows/_java-build.yml) / [`_node-build.yml`](./.github/workflows/_node-build.yml) can construct that ARN.
 
 ---
 
@@ -188,11 +190,12 @@ Complete these using **zen-infra** where possible; use the AWS CLI only for step
    - `inventory-service`
    - `manufacturing-service`
    - `notification-service`
+   - `qc-service`
    - `supplier-service`
 
    Enable **scan on push** if your policy requires it (recommended in `CI-ARCHITECTURE.md`).
 
-3. **GitHub OIDC + CI IAM role** — Use the [OIDC and IAM role — AWS CLI](#oidc-and-iam-role--aws-cli-pharma-github-actions-role) section above, or equivalent resources in zen-infra (same trust and ECR-only permissions).
+3. **GitHub OIDC + CI IAM role** — Use the [OIDC and IAM role — AWS CLI](#oidc-and-iam-role--aws-cli-pharma-dev-github-actions-role) section above, or equivalent resources in zen-infra (same trust and ECR-only permissions).
 
 4. **Cosign / admission** — If production enforces signed images, zen-infra should install **Kyverno** (or equivalent) policies that verify Cosign signatures, consistent with how [`_java-build.yml`](./.github/workflows/_java-build.yml) signs images after push.
 
@@ -201,7 +204,7 @@ Complete these using **zen-infra** where possible; use the AWS CLI only for step
 ## Phase 3 — ArgoCD on EKS
 
 1. **Install ArgoCD** — Via zen-infra Helm/module or the official Helm chart; secure the server (ingress, SSO, TLS) per your organization.
-2. **Register the GitOps repo** — Add **read** credentials (SSH deploy key or HTTPS token) so ArgoCD can pull `YOUR_ORG/zen-gitops`. CI uses a separate **write** token (`GITOPS_TOKEN`).
+2. **Register the GitOps repo** — Add **read** credentials (SSH deploy key or HTTPS token) so ArgoCD can pull `YOUR_GITHUB_USERNAME/zen-gitops`. CI uses a separate **write** token (`GITOPS_TOKEN`).
 3. **Bootstrap Applications** — Apply manifests under `argocd/apps/` in your gitops repo. Typical pattern for this project:
 
    - **DEV:** one ArgoCD Application per service, **auto-sync**
@@ -221,7 +224,7 @@ Complete these using **zen-infra** where possible; use the AWS CLI only for step
 | Secret | Required | Purpose |
 |--------|----------|---------|
 | `AWS_ACCOUNT_ID` | Yes | Used in `role-to-assume` ARN and ECR URL construction |
-| `GITOPS_TOKEN` | Yes | PAT or GitHub App token with **`contents: write`** (and ability to open PRs) on **`YOUR_ORG/zen-gitops`** |
+| `GITOPS_TOKEN` | Yes | PAT or GitHub App token with **`contents: write`** (and ability to open PRs) on **`YOUR_GITHUB_USERNAME/zen-gitops`** |
 
 The workflows check out zen-gitops, commit, push, and use `gh pr create`. Ensure the token can push branches and open pull requests in the gitops repository.
 
@@ -249,7 +252,7 @@ Ensure your integration branch is named **`develop`** or update `branches:` in e
 
 ---
 
-## Phase 5 — GitOps repo layout (`YOUR_ORG/zen-gitops`)
+## Phase 5 — GitOps repo layout (`YOUR_GITHUB_USERNAME/zen-gitops`)
 
 Mirror the structure described in [`CI-ARCHITECTURE.md`](./CI-ARCHITECTURE.md):
 
@@ -280,9 +283,9 @@ image:
 
 ## Phase 6 — Verification checklist
 
-1. **AWS:** OIDC provider exists; IAM role trust matches `YOUR_ORG/zen-pharma-backend`; ECR repos exist; role can assume and push (optional smoke test).
+1. **AWS:** OIDC provider exists; IAM role trust matches `YOUR_GITHUB_USERNAME/zen-pharma-backend`; ECR repos exist; role can assume and push (optional smoke test).
 2. **GitHub:** Secrets and environments configured; `GITOPS_TOKEN` can clone, push, and open PRs on the gitops repo.
-3. **Workflows:** All `GITOPS_REPO` values point to `YOUR_ORG/zen-gitops`.
+3. **Workflows:** All `GITOPS_REPO` values point to `YOUR_GITHUB_USERNAME/zen-gitops`.
 4. **ArgoCD:** Applications sync from your gitops repo; DEV reaches Healthy after CI updates `envs/dev/values-<service>.yaml`.
 5. **End-to-end:** Push a change to **`develop`** under one service path (e.g. `api-gateway/`) → build → ECR tag `sha-xxxxxxx` → dev values updated → ArgoCD rolls out.
 
